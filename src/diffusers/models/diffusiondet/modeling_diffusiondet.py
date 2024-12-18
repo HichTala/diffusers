@@ -1,10 +1,35 @@
+import math
+from collections import namedtuple
+
 import torch
 from torch import nn
+import torch.nn.functional as F
 from torch.nn.functional import l1_loss
+from torchvision import ops
 from transformers.utils.backbone_utils import load_backbone
 
 from diffusers.models.diffusiondet.head import DiffusionDetHead
 from diffusers.models.diffusiondet.loss import HungarianMatcherDynamicK, CriterionDynamicK
+
+ModelPrediction = namedtuple('ModelPrediction', ['pred_noise', 'pred_x_start'])
+
+def default(val, d):
+    if val is not None:
+        return val
+    return d() if callable(d) else d
+
+
+def cosine_beta_schedule(timesteps, s=0.008):
+    """
+    cosine schedule
+    as proposed in https://openreview.net/forum?id=-NEXDKk8gZ
+    """
+    steps = timesteps + 1
+    x = torch.linspace(0, timesteps, steps, dtype=torch.float64)
+    alphas_cumprod = torch.cos(((x / timesteps) + s) / (1 + s) * math.pi * 0.5) ** 2
+    alphas_cumprod = alphas_cumprod / alphas_cumprod[0]
+    betas = 1 - (alphas_cumprod[1:] / alphas_cumprod[:-1])
+    return torch.clip(betas, 0, 0.999)
 
 
 class DiffusionDet(nn.Module):
@@ -15,10 +40,27 @@ class DiffusionDet(nn.Module):
     def __init__(self, config):
         super(DiffusionDet, self).__init__()
 
-        self.training = True
+        self.device = torch.device('cuda')
+
+        self.in_features = config.roi_head_in_features
+        self.num_classes = 80
+        self.num_proposals = config.num_proposals
 
         self.preprocess_image = None
         self.backbone = None  # load_backbone(config)
+
+        # build diffusion
+        betas = cosine_beta_schedule(1000)
+        alphas_cumprod = torch.cumprod(1 - betas, dim=0)
+        alphas_cumprod_prev = F.pad(alphas_cumprod[:-1], (1, 0), value=1.)
+
+        timesteps, = betas.shape
+        sampling_timesteps = config.sample_step
+        self.num_timesteps = int(timesteps)
+        self.sampling_timesteps = default(sampling_timesteps, timesteps)
+        assert self.sampling_timesteps <= timesteps
+        self.ddim_sampling_eta = 1.
+        self.scale = config.snr_scale
 
         roi_input_shape = {
             'p2': {'stride': 4},
@@ -27,7 +69,7 @@ class DiffusionDet(nn.Module):
             'p5': {'stride': 32},
             'p6': {'stride': 64}
         }
-        self.head = DiffusionDetHead(config, roi_input_shape=roi_input_shape, num_classes=80)
+        self.head = DiffusionDetHead(config, roi_input_shape=roi_input_shape, num_classes=self.num_classes)
 
         self.deep_supervision = config.deep_supervision
         self.use_focal = config.use_focal
@@ -43,20 +85,98 @@ class DiffusionDet(nn.Module):
                 aux_weight_dict.update({k + f"_{i}": v for k, v in weight_dict.items()})
             weight_dict.update(aux_weight_dict)
 
-        self.criterion = CriterionDynamicK(config, num_classes=80, weight_dict=weight_dict)
+        self.criterion = CriterionDynamicK(config, num_classes=self.num_classes, weight_dict=weight_dict)
 
-        self.in_features = 0
+    def model_predictions(self, backbone_feats, images_whwh, x, t):
+        x_boxes = torch.clamp(x, min=-1 * self.scale, max=self.scale)
+        x_boxes = ((x_boxes / self.scale) + 1) / 2
+        x_boxes = ops.box_convert(x_boxes, 'cxcywh', 'xyxy')
+        x_boxes = x_boxes * images_whwh[:, None, :]
+        outputs_class, outputs_coord = self.head(backbone_feats, x_boxes, t, None)
+
+        x_start = outputs_coord[-1]  # (batch, num_proposals, 4) predict boxes: absolute coordinates (x1, y1, x2, y2)
+        x_start = x_start / images_whwh[:, None, :]
+        x_start = ops.box_convert(x_start, 'xyxy', 'cxcywh')
+        x_start = (x_start * 2 - 1.) * self.scale
+        x_start = torch.clamp(x_start, min=-1 * self.scale, max=self.scale)
+        pred_noise = self.predict_noise_from_start(x, t, x_start)
+
+        return ModelPrediction(pred_noise, x_start), outputs_class, outputs_coord
+
+    @torch.no_grad()
+    def ddim_sample(self, batched_inputs, backbone_feats, images_whwh, images, clip_denoised=True,
+                    do_postprocess=True):
+        bs = 1
+        shape = (bs, self.num_proposals, 4)
+
+        # [-1, 0, 1, 2, ..., T-1] when sampling_timesteps == total_timesteps
+        times = torch.linspace(-1, self.num_timesteps - 1, steps=self.sampling_timesteps + 1)
+        times = list(reversed(times.int().tolist()))
+        time_pairs = list(zip(times[:-1], times[1:]))  # [(T-1, T-2), (T-2, T-3), ..., (1, 0), (0, -1)]
+
+        img = torch.randn(shape, device=self.device)
+
+        ensemble_score, ensemble_label, ensemble_coord = [], [], []
+        x_start = None
+        for time, time_next in time_pairs:
+            time_cond = torch.full((bs,), time, device=self.device, dtype=torch.long)
+
+            preds, outputs_class, outputs_coord = self.model_predictions(backbone_feats, images_whwh, img, time_cond)
+            pred_noise, x_start = preds.pred_noise, preds.pred_x_start
+
+            score_per_image, box_per_image = outputs_class[-1][0], outputs_coord[-1][0]
+            threshold = 0.5
+            score_per_image = torch.sigmoid(score_per_image)
+            value, _ = torch.max(score_per_image, -1, keepdim=False)
+            keep_idx = value > threshold
+            num_remain = torch.sum(keep_idx)
+
+            pred_noise = pred_noise[:, keep_idx, :]
+            x_start = x_start[:, keep_idx, :]
+            img = img[:, keep_idx, :]
+
+            if time_next < 0:
+                img = x_start
+                continue
+
+            alpha = self.alphas_cumprod[time]
+            alpha_next = self.alphas_cumprod[time_next]
+
+            sigma = self.ddim_sampling_eta * ((1 - alpha / alpha_next) * (1 - alpha_next) / (1 - alpha)).sqrt()
+            c = (1 - alpha_next - sigma ** 2).sqrt()
+
+            noise = torch.randn_like(img)
+
+            img = x_start * alpha_next.sqrt() + \
+                  c * pred_noise + \
+                  sigma * noise
+
+            img = torch.cat((img, torch.randn(1, self.num_proposals - num_remain, 4, device=img.device)), dim=1)
+
+            if self.sampling_timesteps > 1:
+                box_pred_per_image, scores_per_image, labels_per_image = self.inference(outputs_class[-1],
+                                                                                        outputs_coord[-1],
+                                                                                        images.image_sizes)
+                ensemble_score.append(scores_per_image)
+                ensemble_label.append(labels_per_image)
+                ensemble_coord.append(box_pred_per_image)
+
+
+
 
     def forward(self, batched_inputs, do_postprocess=True):
         """
         Args:
         """
-        if self.training:
-            features = [torch.rand(1, 256, i, i) for i in [144, 72, 36, 18]]
-            x_boxes = torch.rand(1, 300, 4)
-            t = torch.rand(1)
-            targets = None
+        features = [torch.rand(1, 256, i, i) for i in [144, 72, 36, 18]]
+        x_boxes = torch.rand(1, 300, 4)
+        t = torch.rand(1)
+        targets = None
 
+        if not self.training:
+            return self.ddim_sample()
+
+        if self.training:
             outputs_class, outputs_coord = self.head(features, x_boxes, t)
             output = {'pred_logits': outputs_class[-1], 'pred_boxes': outputs_coord[-1]}
 
@@ -65,5 +185,8 @@ class DiffusionDet(nn.Module):
                                          for a, b in zip(outputs_class[:-1], outputs_coord[:-1])]
 
             loss_dict = self.criterion(output, targets)
-
+            weight_dict = self.criterion.weight_dict
+            for k in loss_dict.keys():
+                if k in weight_dict:
+                    loss_dict[k] *= weight_dict[k]
             return loss_dict
