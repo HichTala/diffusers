@@ -11,9 +11,9 @@ from torchvision.ops import RoIAlign
 _DEFAULT_SCALE_CLAMP = math.log(1000.0 / 16)
 
 def convert_boxes_to_pooler_format(bboxes):
-    B, N = bboxes.shape[:2]
-    sizes = torch.full((B,), N)
-    aggregated_bboxes = bboxes.view(B * N, -1)
+    bs, num_proposals = bboxes.shape[:2]
+    sizes = torch.full((bs,), num_proposals)
+    aggregated_bboxes = bboxes.view(bs * num_proposals, -1)
     indices = torch.repeat_interleave(
         torch.arange(len(sizes), dtype=aggregated_bboxes.dtype, device=aggregated_bboxes.device), sizes
     )
@@ -231,23 +231,23 @@ class DiffusionDetHead(nn.Module):
         self.bbox_weights = (2.0, 2.0, 1.0, 1.0)
 
     def forward(self, features, bboxes, time_emb):
-        B, N = bboxes.shape[:2]
+        bs, num_proposals = bboxes.shape[:2]
 
         # roi_feature.
         roi_features = self.pooler(features, bboxes)
 
-        pro_features = roi_features.view(B, N, self.hidden_dim, -1).mean(-1)
+        pro_features = roi_features.view(bs, num_proposals, self.hidden_dim, -1).mean(-1)
 
-        roi_features = roi_features.view(B * N, self.hidden_dim, -1).permute(2, 0, 1)
+        roi_features = roi_features.view(bs * num_proposals, self.hidden_dim, -1).permute(2, 0, 1)
 
         # self_att.
-        pro_features = pro_features.view(B, N, self.hidden_dim).permute(1, 0, 2)
+        pro_features = pro_features.view(bs, num_proposals, self.hidden_dim).permute(1, 0, 2)
         pro_features2 = self.self_attn(pro_features, pro_features, value=pro_features)[0]
         pro_features = pro_features + self.dropout1(pro_features2)
         pro_features = self.norm1(pro_features)
 
         # inst_interact.
-        pro_features = pro_features.view(N, B, self.hidden_dim).permute(1, 0, 2).reshape(1, B * N,
+        pro_features = pro_features.view(num_proposals, bs, self.hidden_dim).permute(1, 0, 2).reshape(1, bs * num_proposals,
                                                                                       self.hidden_dim)
         pro_features2 = self.inst_interact(pro_features, roi_features)
         pro_features = pro_features + self.dropout2(pro_features2)
@@ -258,10 +258,10 @@ class DiffusionDetHead(nn.Module):
         obj_features = obj_features + self.dropout3(obj_features2)
         obj_features = self.norm3(obj_features)
 
-        fc_feature = obj_features.transpose(0, 1).reshape(B * N, -1)
+        fc_feature = obj_features.transpose(0, 1).reshape(bs * num_proposals, -1)
 
         scale_shift = self.block_time_mlp(time_emb)
-        scale_shift = torch.repeat_interleave(scale_shift, N, dim=0)
+        scale_shift = torch.repeat_interleave(scale_shift, num_proposals, dim=0)
         scale, shift = scale_shift.chunk(2, dim=1)
         fc_feature = fc_feature * (scale + 1) + shift
 
@@ -275,7 +275,7 @@ class DiffusionDetHead(nn.Module):
         bboxes_deltas = self.bboxes_delta(reg_feature)
         pred_bboxes = self.apply_deltas(bboxes_deltas, bboxes.view(-1, 4))
 
-        return class_logits.view(B, N, -1), pred_bboxes.view(B, N, -1), obj_features
+        return class_logits.view(bs, num_proposals, -1), pred_bboxes.view(bs, num_proposals, -1), obj_features
 
 
 class ROIPooler(nn.Module):
