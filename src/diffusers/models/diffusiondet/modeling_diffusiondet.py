@@ -13,6 +13,7 @@ from diffusers.models.diffusiondet.loss import HungarianMatcherDynamicK, Criteri
 
 ModelPrediction = namedtuple('ModelPrediction', ['pred_noise', 'pred_x_start'])
 
+
 def default(val, d):
     if val is not None:
         return val
@@ -30,6 +31,10 @@ def cosine_beta_schedule(timesteps, s=0.008):
     alphas_cumprod = alphas_cumprod / alphas_cumprod[0]
     betas = 1 - (alphas_cumprod[1:] / alphas_cumprod[:-1])
     return torch.clip(betas, 0, 0.999)
+
+
+def detector_postprocess(results_per_image, height, width):
+    return
 
 
 class DiffusionDet(nn.Module):
@@ -104,8 +109,7 @@ class DiffusionDet(nn.Module):
         return ModelPrediction(pred_noise, x_start), outputs_class, outputs_coord
 
     @torch.no_grad()
-    def ddim_sample(self, batched_inputs, backbone_feats, images_whwh, images, clip_denoised=True,
-                    do_postprocess=True):
+    def ddim_sample(self, batched_inputs, backbone_feats, images_whwh, images):
         bs = 1
         shape = (bs, self.num_proposals, 4)
 
@@ -117,7 +121,7 @@ class DiffusionDet(nn.Module):
         img = torch.randn(shape, device=self.device)
 
         ensemble_score, ensemble_label, ensemble_coord = [], [], []
-        x_start = None
+        outputs_class, outputs_coord = None, None
         for time, time_next in time_pairs:
             time_cond = torch.full((bs,), time, device=self.device, dtype=torch.long)
 
@@ -161,8 +165,32 @@ class DiffusionDet(nn.Module):
                 ensemble_label.append(labels_per_image)
                 ensemble_coord.append(box_pred_per_image)
 
+        if self.sampling_timesteps > 1:
+            box_pred_per_image = torch.cat(ensemble_coord, dim=0)
+            scores_per_image = torch.cat(ensemble_score, dim=0)
+            labels_per_image = torch.cat(ensemble_label, dim=0)
 
+            if self.use_nms:
+                # TODO: verify if the box_pred_per_image is in right format
+                keep = ops.nms(box_pred_per_image, scores_per_image, labels_per_image, 0.5)
+                box_pred_per_image = box_pred_per_image[keep]
+                scores_per_image = scores_per_image[keep]
+                labels_per_image = labels_per_image[keep]
 
+            # TODO: choose the right format to save results
+            results = None
+        else:
+            output = {'pred_logits': outputs_class[-1], 'pred_boxes': outputs_coord[-1]}
+            box_cls = output["pred_logits"]
+            box_pred = output["pred_boxes"]
+            results = self.inference(box_cls, box_pred, images.image_sizes)
+        processed_results = []
+        for results_per_image, input_per_image, image_size in zip(results, batched_inputs, images.image_sizes):
+            height = input_per_image.get("height", image_size[0])
+            width = input_per_image.get("width", image_size[1])
+            r = detector_postprocess(results_per_image, height, width)
+            processed_results.append({"instances": r})
+        return processed_results
 
     def forward(self, batched_inputs, do_postprocess=True):
         """
@@ -190,3 +218,68 @@ class DiffusionDet(nn.Module):
                 if k in weight_dict:
                     loss_dict[k] *= weight_dict[k]
             return loss_dict
+
+    def inference(self, box_cls, box_pred, image_sizes):
+        """
+        Arguments:
+            box_cls (Tensor): tensor of shape (batch_size, num_proposals, K).
+                The tensor predicts the classification probability for each proposal.
+            box_pred (Tensor): tensors of shape (batch_size, num_proposals, 4).
+                The tensor predicts 4-vector (x,y,w,h) box
+                regression values for every proposal
+            image_sizes (List[torch.Size]): the input image sizes
+
+        Returns:
+            results (List[Instances]): a list of #images elements.
+        """
+        assert len(box_cls) == len(image_sizes)
+        results = []
+
+        if self.use_focal or self.use_fed_loss:
+            scores = torch.sigmoid(box_cls)
+            labels = torch.arange(self.num_classes, device=self.device). \
+                unsqueeze(0).repeat(self.num_proposals, 1).flatten(0, 1)
+
+            for i, (scores_per_image, box_pred_per_image, image_size) in enumerate(zip(
+                    scores, box_pred, image_sizes
+            )):
+                scores_per_image, topk_indices = scores_per_image.flatten(0, 1).topk(self.num_proposals, sorted=False)
+                labels_per_image = labels[topk_indices]
+                box_pred_per_image = box_pred_per_image.view(-1, 1, 4).repeat(1, self.num_classes, 1).view(-1, 4)
+                box_pred_per_image = box_pred_per_image[topk_indices]
+
+                if self.sampling_timesteps > 1:
+                    return box_pred_per_image, scores_per_image, labels_per_image
+
+                if self.use_nms:
+                    # TODO: verify if the box_pred_per_image is in right format
+                    keep = ops.nms(box_pred_per_image, scores_per_image, labels_per_image, 0.5)
+                    box_pred_per_image = box_pred_per_image[keep]
+                    scores_per_image = scores_per_image[keep]
+                    labels_per_image = labels_per_image[keep]
+
+                # TODO: choose the right format to save results
+                results = None
+        else:
+            # For each box we assign the best class or the second best if the best on is `no_object`.
+            scores, labels = F.softmax(box_cls, dim=-1)[:, :, :-1].max(-1)
+
+            for i, (scores_per_image, labels_per_image, box_pred_per_image, image_size) in enumerate(zip(
+                    scores, labels, box_pred, image_sizes
+            )):
+                if self.sampling_timesteps > 1:
+                    return box_pred_per_image, scores_per_image, labels_per_image
+
+                if self.use_nms:
+                    # TODO: verify if the box_pred_per_image is in right format
+                    keep = ops.nms(box_pred_per_image, scores_per_image, labels_per_image, 0.5)
+                    box_pred_per_image = box_pred_per_image[keep]
+                    scores_per_image = scores_per_image[keep]
+                    labels_per_image = labels_per_image[keep]
+
+                # TODO: choose the right format to save results
+                results = None
+
+        return results
+
+

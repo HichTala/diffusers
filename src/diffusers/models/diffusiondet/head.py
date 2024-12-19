@@ -60,7 +60,7 @@ class DynamicHead(nn.Module):
 
         ddet_head = DiffusionDetHead(config, roi_input_shape, num_classes)
         self.num_head = config.num_heads
-        self.head_series = nn.ModuleList([copy.deepcopy(ddet_head) for i in range(num_heads)])
+        self.head_series = nn.ModuleList([copy.deepcopy(ddet_head) for _ in range(num_heads)])
         self.return_intermediate = config.deep_supervision
 
         # Gaussian random feature embedding layer for time
