@@ -127,10 +127,10 @@ def get_size_with_aspect_ratio(image_size, size, max_size=None) -> Tuple[int, in
 
 # Copied from transformers.models.detr.image_processing_detr.get_resize_output_image_size
 def get_resize_output_image_size(
-        input_image: np.ndarray,
-        size: Union[int, Tuple[int, int], List[int]],
-        max_size: Optional[int] = None,
-        input_data_format: Optional[Union[str, ChannelDimension]] = None,
+    input_image: np.ndarray,
+    size: Union[int, Tuple[int, int], List[int]],
+    max_size: Optional[int] = None,
+    input_data_format: Optional[Union[str, ChannelDimension]] = None,
 ) -> Tuple[int, int]:
     """
     Computes the output image size given the input image size and the desired output size. If the desired output size
@@ -156,10 +156,10 @@ def get_resize_output_image_size(
 
 # Copied from transformers.models.detr.image_processing_detr.get_image_size_for_max_height_width
 def get_image_size_for_max_height_width(
-        input_image: np.ndarray,
-        max_height: int,
-        max_width: int,
-        input_data_format: Optional[Union[str, ChannelDimension]] = None,
+    input_image: np.ndarray,
+    max_height: int,
+    max_width: int,
+    input_data_format: Optional[Union[str, ChannelDimension]] = None,
 ) -> Tuple[int, int]:
     """
     Computes the output image size given the input image and the maximum allowed height and width. Keep aspect ratio.
@@ -254,7 +254,7 @@ def max_across_indices(values: Iterable[Any]) -> List[Any]:
 
 # Copied from transformers.models.detr.image_processing_detr.get_max_height_width
 def get_max_height_width(
-        images: List[np.ndarray], input_data_format: Optional[Union[str, ChannelDimension]] = None
+    images: List[np.ndarray], input_data_format: Optional[Union[str, ChannelDimension]] = None
 ) -> List[int]:
     """
     Get the maximum height and width across all images in a batch.
@@ -273,8 +273,7 @@ def get_max_height_width(
 
 # Copied from transformers.models.detr.image_processing_detr.make_pixel_mask
 def make_pixel_mask(
-        image: np.ndarray, output_size: Tuple[int, int],
-        input_data_format: Optional[Union[str, ChannelDimension]] = None
+    image: np.ndarray, output_size: Tuple[int, int], input_data_format: Optional[Union[str, ChannelDimension]] = None
 ) -> np.ndarray:
     """
     Make a pixel mask for the image, where 1 indicates a valid pixel and 0 indicates padding.
@@ -328,10 +327,10 @@ def convert_coco_poly_to_mask(segmentations, height: int, width: int) -> np.ndar
 
 # Copied from transformers.models.detr.image_processing_detr.prepare_coco_detection_annotation with DETR->DeformableDetr
 def prepare_coco_detection_annotation(
-        image,
-        target,
-        return_segmentation_masks: bool = False,
-        input_data_format: Optional[Union[ChannelDimension, str]] = None,
+    image,
+    target,
+    return_segmentation_masks: bool = False,
+    input_data_format: Optional[Union[ChannelDimension, str]] = None,
 ):
     """
     Convert the target in COCO format into the format expected by DeformableDetr.
@@ -424,11 +423,11 @@ def masks_to_boxes(masks: np.ndarray) -> np.ndarray:
 
 # Copied from transformers.models.detr.image_processing_detr.prepare_coco_panoptic_annotation with DETR->DeformableDetr
 def prepare_coco_panoptic_annotation(
-        image: np.ndarray,
-        target: Dict,
-        masks_path: Union[str, pathlib.Path],
-        return_masks: bool = True,
-        input_data_format: Union[ChannelDimension, str] = None,
+    image: np.ndarray,
+    target: Dict,
+    masks_path: Union[str, pathlib.Path],
+    return_masks: bool = True,
+    input_data_format: Union[ChannelDimension, str] = None,
 ) -> Dict:
     """
     Prepare a coco panoptic annotation for DeformableDetr.
@@ -466,7 +465,7 @@ def prepare_coco_panoptic_annotation(
 
 # Copied from transformers.models.detr.image_processing_detr.get_segmentation_image
 def get_segmentation_image(
-        masks: np.ndarray, input_size: Tuple, target_size: Tuple, stuff_equiv_classes, deduplicate=False
+    masks: np.ndarray, input_size: Tuple, target_size: Tuple, stuff_equiv_classes, deduplicate=False
 ):
     h, w = input_size
     final_h, final_w = target_size
@@ -511,13 +510,13 @@ def score_labels_from_class_probabilities(logits: np.ndarray) -> Tuple[np.ndarra
 
 # Copied from transformers.models.detr.image_processing_detr.post_process_panoptic_sample
 def post_process_panoptic_sample(
-        out_logits: np.ndarray,
-        masks: np.ndarray,
-        boxes: np.ndarray,
-        processed_size: Tuple[int, int],
-        target_size: Tuple[int, int],
-        is_thing_map: Dict,
-        threshold=0.85,
+    out_logits: np.ndarray,
+    masks: np.ndarray,
+    boxes: np.ndarray,
+    processed_size: Tuple[int, int],
+    target_size: Tuple[int, int],
+    is_thing_map: Dict,
+    threshold=0.85,
 ) -> Dict:
     """
     Converts the output of [`DetrForSegmentation`] into panoptic segmentation predictions for a single sample.
@@ -597,11 +596,11 @@ def post_process_panoptic_sample(
 
 # Copied from transformers.models.detr.image_processing_detr.resize_annotation
 def resize_annotation(
-        annotation: Dict[str, Any],
-        orig_size: Tuple[int, int],
-        target_size: Tuple[int, int],
-        threshold: float = 0.5,
-        resample: PILImageResampling = PILImageResampling.NEAREST,
+    annotation: Dict[str, Any],
+    orig_size: Tuple[int, int],
+    target_size: Tuple[int, int],
+    threshold: float = 0.5,
+    resample: PILImageResampling = PILImageResampling.NEAREST,
 ):
     """
     Resizes an annotation to a target size.
@@ -742,13 +741,13 @@ def check_segment_validity(mask_labels, mask_probs, k, mask_threshold=0.5, overl
 
 # Copied from transformers.models.detr.image_processing_detr.compute_segments
 def compute_segments(
-        mask_probs,
-        pred_scores,
-        pred_labels,
-        mask_threshold: float = 0.5,
-        overlap_mask_area_threshold: float = 0.8,
-        label_ids_to_fuse: Optional[Set[int]] = None,
-        target_size: Tuple[int, int] = None,
+    mask_probs,
+    pred_scores,
+    pred_labels,
+    mask_threshold: float = 0.5,
+    overlap_mask_area_threshold: float = 0.8,
+    label_ids_to_fuse: Optional[Set[int]] = None,
+    target_size: Tuple[int, int] = None,
 ):
     height = mask_probs.shape[1] if target_size is None else target_size[0]
     width = mask_probs.shape[2] if target_size is None else target_size[1]
@@ -803,7 +802,7 @@ def compute_segments(
 
 class DiffusionDetImageProcessor(BaseImageProcessor):
     r"""
-    Constructs a DiffusionDet image processor.
+    Constructs a Deformable DETR image processor.
 
     Args:
         format (`str`, *optional*, defaults to `"coco_detection"`):
@@ -858,20 +857,20 @@ class DiffusionDetImageProcessor(BaseImageProcessor):
 
     # Copied from transformers.models.detr.image_processing_detr.DetrImageProcessor.__init__
     def __init__(
-            self,
-            format: Union[str, AnnotationFormat] = AnnotationFormat.COCO_DETECTION,
-            do_resize: bool = True,
-            size: Dict[str, int] = None,
-            resample: PILImageResampling = PILImageResampling.BILINEAR,
-            do_rescale: bool = True,
-            rescale_factor: Union[int, float] = 1 / 255,
-            do_normalize: bool = True,
-            image_mean: Union[float, List[float]] = None,
-            image_std: Union[float, List[float]] = None,
-            do_convert_annotations: Optional[bool] = None,
-            do_pad: bool = True,
-            pad_size: Optional[Dict[str, int]] = None,
-            **kwargs,
+        self,
+        format: Union[str, AnnotationFormat] = AnnotationFormat.COCO_DETECTION,
+        do_resize: bool = True,
+        size: Dict[str, int] = None,
+        resample: PILImageResampling = PILImageResampling.BILINEAR,
+        do_rescale: bool = True,
+        rescale_factor: Union[int, float] = 1 / 255,
+        do_normalize: bool = True,
+        image_mean: Union[float, List[float]] = None,
+        image_std: Union[float, List[float]] = None,
+        do_convert_annotations: Optional[bool] = None,
+        do_pad: bool = True,
+        pad_size: Optional[Dict[str, int]] = None,
+        **kwargs,
     ) -> None:
         if "pad_and_return_pixel_mask" in kwargs:
             do_pad = kwargs.pop("pad_and_return_pixel_mask")
@@ -944,13 +943,13 @@ class DiffusionDetImageProcessor(BaseImageProcessor):
 
     # Copied from transformers.models.detr.image_processing_detr.DetrImageProcessor.prepare_annotation with DETR->DeformableDetr
     def prepare_annotation(
-            self,
-            image: np.ndarray,
-            target: Dict,
-            format: Optional[AnnotationFormat] = None,
-            return_segmentation_masks: bool = None,
-            masks_path: Optional[Union[str, pathlib.Path]] = None,
-            input_data_format: Optional[Union[str, ChannelDimension]] = None,
+        self,
+        image: np.ndarray,
+        target: Dict,
+        format: Optional[AnnotationFormat] = None,
+        return_segmentation_masks: bool = None,
+        masks_path: Optional[Union[str, pathlib.Path]] = None,
+        input_data_format: Optional[Union[str, ChannelDimension]] = None,
     ) -> Dict:
         """
         Prepare an annotation for feeding into DeformableDetr model.
@@ -977,13 +976,13 @@ class DiffusionDetImageProcessor(BaseImageProcessor):
 
     # Copied from transformers.models.detr.image_processing_detr.DetrImageProcessor.resize
     def resize(
-            self,
-            image: np.ndarray,
-            size: Dict[str, int],
-            resample: PILImageResampling = PILImageResampling.BILINEAR,
-            data_format: Optional[ChannelDimension] = None,
-            input_data_format: Optional[Union[str, ChannelDimension]] = None,
-            **kwargs,
+        self,
+        image: np.ndarray,
+        size: Dict[str, int],
+        resample: PILImageResampling = PILImageResampling.BILINEAR,
+        data_format: Optional[ChannelDimension] = None,
+        input_data_format: Optional[Union[str, ChannelDimension]] = None,
+        **kwargs,
     ) -> np.ndarray:
         """
         Resize the image to the given size. Size can be `min_size` (scalar) or `(height, width)` tuple. If size is an
@@ -1046,11 +1045,11 @@ class DiffusionDetImageProcessor(BaseImageProcessor):
 
     # Copied from transformers.models.detr.image_processing_detr.DetrImageProcessor.resize_annotation
     def resize_annotation(
-            self,
-            annotation,
-            orig_size,
-            size,
-            resample: PILImageResampling = PILImageResampling.NEAREST,
+        self,
+        annotation,
+        orig_size,
+        size,
+        resample: PILImageResampling = PILImageResampling.NEAREST,
     ) -> Dict:
         """
         Resize the annotation to match the resized image. If size is an int, smaller edge of the mask will be matched
@@ -1060,11 +1059,11 @@ class DiffusionDetImageProcessor(BaseImageProcessor):
 
     # Copied from transformers.models.detr.image_processing_detr.DetrImageProcessor.rescale
     def rescale(
-            self,
-            image: np.ndarray,
-            rescale_factor: float,
-            data_format: Optional[Union[str, ChannelDimension]] = None,
-            input_data_format: Optional[Union[str, ChannelDimension]] = None,
+        self,
+        image: np.ndarray,
+        rescale_factor: float,
+        data_format: Optional[Union[str, ChannelDimension]] = None,
+        input_data_format: Optional[Union[str, ChannelDimension]] = None,
     ) -> np.ndarray:
         """
         Rescale the image by the given factor. image = image * rescale_factor.
@@ -1097,12 +1096,12 @@ class DiffusionDetImageProcessor(BaseImageProcessor):
 
     # Copied from transformers.models.detr.image_processing_detr.DetrImageProcessor._update_annotation_for_padded_image
     def _update_annotation_for_padded_image(
-            self,
-            annotation: Dict,
-            input_image_size: Tuple[int, int],
-            output_image_size: Tuple[int, int],
-            padding,
-            update_bboxes,
+        self,
+        annotation: Dict,
+        input_image_size: Tuple[int, int],
+        output_image_size: Tuple[int, int],
+        padding,
+        update_bboxes,
     ) -> Dict:
         """
         Update the annotation for a padded image.
@@ -1141,14 +1140,14 @@ class DiffusionDetImageProcessor(BaseImageProcessor):
 
     # Copied from transformers.models.detr.image_processing_detr.DetrImageProcessor._pad_image
     def _pad_image(
-            self,
-            image: np.ndarray,
-            output_size: Tuple[int, int],
-            annotation: Optional[Dict[str, Any]] = None,
-            constant_values: Union[float, Iterable[float]] = 0,
-            data_format: Optional[ChannelDimension] = None,
-            input_data_format: Optional[Union[str, ChannelDimension]] = None,
-            update_bboxes: bool = True,
+        self,
+        image: np.ndarray,
+        output_size: Tuple[int, int],
+        annotation: Optional[Dict[str, Any]] = None,
+        constant_values: Union[float, Iterable[float]] = 0,
+        data_format: Optional[ChannelDimension] = None,
+        input_data_format: Optional[Union[str, ChannelDimension]] = None,
+        update_bboxes: bool = True,
     ) -> np.ndarray:
         """
         Pad an image with zeros to the given size.
@@ -1175,16 +1174,16 @@ class DiffusionDetImageProcessor(BaseImageProcessor):
 
     # Copied from transformers.models.detr.image_processing_detr.DetrImageProcessor.pad
     def pad(
-            self,
-            images: List[np.ndarray],
-            annotations: Optional[Union[AnnotationType, List[AnnotationType]]] = None,
-            constant_values: Union[float, Iterable[float]] = 0,
-            return_pixel_mask: bool = True,
-            return_tensors: Optional[Union[str, TensorType]] = None,
-            data_format: Optional[ChannelDimension] = None,
-            input_data_format: Optional[Union[str, ChannelDimension]] = None,
-            update_bboxes: bool = True,
-            pad_size: Optional[Dict[str, int]] = None,
+        self,
+        images: List[np.ndarray],
+        annotations: Optional[Union[AnnotationType, List[AnnotationType]]] = None,
+        constant_values: Union[float, Iterable[float]] = 0,
+        return_pixel_mask: bool = True,
+        return_tensors: Optional[Union[str, TensorType]] = None,
+        data_format: Optional[ChannelDimension] = None,
+        input_data_format: Optional[Union[str, ChannelDimension]] = None,
+        update_bboxes: bool = True,
+        pad_size: Optional[Dict[str, int]] = None,
     ) -> BatchFeature:
         """
         Pads a batch of images to the bottom and right of the image with zeros to the size of largest height and width
@@ -1261,27 +1260,27 @@ class DiffusionDetImageProcessor(BaseImageProcessor):
 
     # Copied from transformers.models.detr.image_processing_detr.DetrImageProcessor.preprocess
     def preprocess(
-            self,
-            images: ImageInput,
-            annotations: Optional[Union[AnnotationType, List[AnnotationType]]] = None,
-            return_segmentation_masks: bool = None,
-            masks_path: Optional[Union[str, pathlib.Path]] = None,
-            do_resize: Optional[bool] = None,
-            size: Optional[Dict[str, int]] = None,
-            resample=None,  # PILImageResampling
-            do_rescale: Optional[bool] = None,
-            rescale_factor: Optional[Union[int, float]] = None,
-            do_normalize: Optional[bool] = None,
-            do_convert_annotations: Optional[bool] = None,
-            image_mean: Optional[Union[float, List[float]]] = None,
-            image_std: Optional[Union[float, List[float]]] = None,
-            do_pad: Optional[bool] = None,
-            format: Optional[Union[str, AnnotationFormat]] = None,
-            return_tensors: Optional[Union[TensorType, str]] = None,
-            data_format: Union[str, ChannelDimension] = ChannelDimension.FIRST,
-            input_data_format: Optional[Union[str, ChannelDimension]] = None,
-            pad_size: Optional[Dict[str, int]] = None,
-            **kwargs,
+        self,
+        images: ImageInput,
+        annotations: Optional[Union[AnnotationType, List[AnnotationType]]] = None,
+        return_segmentation_masks: bool = None,
+        masks_path: Optional[Union[str, pathlib.Path]] = None,
+        do_resize: Optional[bool] = None,
+        size: Optional[Dict[str, int]] = None,
+        resample=None,  # PILImageResampling
+        do_rescale: Optional[bool] = None,
+        rescale_factor: Optional[Union[int, float]] = None,
+        do_normalize: Optional[bool] = None,
+        do_convert_annotations: Optional[bool] = None,
+        image_mean: Optional[Union[float, List[float]]] = None,
+        image_std: Optional[Union[float, List[float]]] = None,
+        do_pad: Optional[bool] = None,
+        format: Optional[Union[str, AnnotationFormat]] = None,
+        return_tensors: Optional[Union[TensorType, str]] = None,
+        data_format: Union[str, ChannelDimension] = ChannelDimension.FIRST,
+        input_data_format: Optional[Union[str, ChannelDimension]] = None,
+        pad_size: Optional[Dict[str, int]] = None,
+        **kwargs,
     ) -> BatchFeature:
         """
         Preprocess an image or a batch of images so that it can be used by the model.
@@ -1364,7 +1363,6 @@ class DiffusionDetImageProcessor(BaseImageProcessor):
             )
             do_pad = kwargs.pop("pad_and_return_pixel_mask")
 
-        max_size = None
         if "max_size" in kwargs:
             logger.warning_once(
                 "The `max_size` argument is deprecated and will be removed in a future version, use"
@@ -1374,7 +1372,7 @@ class DiffusionDetImageProcessor(BaseImageProcessor):
 
         do_resize = self.do_resize if do_resize is None else do_resize
         size = self.size if size is None else size
-        size = get_size_dict(size=size, max_size=max_size, default_to_square=False)
+        size = get_size_dict(size=size, default_to_square=False)
         resample = self.resample if resample is None else resample
         do_rescale = self.do_rescale if do_rescale is None else do_rescale
         rescale_factor = self.rescale_factor if rescale_factor is None else rescale_factor
@@ -1422,9 +1420,9 @@ class DiffusionDetImageProcessor(BaseImageProcessor):
             validate_annotations(format, SUPPORTED_ANNOTATION_FORMATS, annotations)
 
         if (
-                masks_path is not None
-                and format == AnnotationFormat.COCO_PANOPTIC
-                and not isinstance(masks_path, (pathlib.Path, str))
+            masks_path is not None
+            and format == AnnotationFormat.COCO_PANOPTIC
+            and not isinstance(masks_path, (pathlib.Path, str))
         ):
             raise ValueError(
                 "The path to the directory containing the mask PNG files should be provided as a"
@@ -1470,7 +1468,7 @@ class DiffusionDetImageProcessor(BaseImageProcessor):
                 for image, target in zip(images, annotations):
                     orig_size = get_image_size(image, input_data_format)
                     resized_image = self.resize(
-                        image, size=size, max_size=max_size, resample=resample, input_data_format=input_data_format
+                        image, size=size, resample=resample, input_data_format=input_data_format
                     )
                     resized_annotation = self.resize_annotation(
                         target, orig_size, get_image_size(resized_image, input_data_format)
@@ -1572,7 +1570,7 @@ class DiffusionDetImageProcessor(BaseImageProcessor):
         return results
 
     def post_process_object_detection(
-            self, outputs, threshold: float = 0.5, target_sizes: Union[TensorType, List[Tuple]] = None, top_k: int = 100
+        self, outputs, threshold: float = 0.5, target_sizes: Union[TensorType, List[Tuple]] = None, top_k: int = 100
     ):
         """
         Converts the raw output of [`DeformableDetrForObjectDetection`] into final bounding boxes in (top_left_x,
