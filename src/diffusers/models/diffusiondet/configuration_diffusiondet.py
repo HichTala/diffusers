@@ -1,9 +1,18 @@
-from diffusers import ConfigMixin
+from transformers.models.auto import CONFIG_MAPPING
+from transformers.utils.backbone_utils import verify_backbone_config_arguments
+
+from ...configuration_utils import ConfigMixin
+from ...utils import logging
+
+logger = logging.get_logger(__name__)
 
 
 class DiffusionDetConfig(ConfigMixin):
     def __init__(
             self,
+            use_timm_backbone=True,
+            backbone_config=None,
+            num_channels=3,
             pixel_mean=(123.675, 116.280, 103.530),
             pixel_std=(58.395, 57.120, 57.375),
             resnet_out_features=("res2", "res3", "res4", "res5"),
@@ -41,8 +50,46 @@ class DiffusionDetConfig(ConfigMixin):
             swin_out_features=(0, 1, 2, 3),
             optimizer="ADAMW",
             backbone_multiplier=1.0,
+            backbone='resnet50',
+            use_pretrained_backbone=True,
+            backbone_kwargs=None,
+            dilation=False,
             **kwargs
     ):
+        # We default to values which were previously hard-coded in the model. This enables configurability of the config
+        # while keeping the default behavior the same.
+        if use_timm_backbone and backbone_kwargs is None:
+            backbone_kwargs = {}
+            if dilation:
+                backbone_kwargs["output_stride"] = 16
+            backbone_kwargs["out_indices"] = [1, 2, 3, 4]
+            backbone_kwargs["in_chans"] = num_channels
+        # Backwards compatibility
+        elif not use_timm_backbone and backbone in (None, "resnet50"):
+            if backbone_config is None:
+                logger.info("`backbone_config` is `None`. Initializing the config with the default `ResNet` backbone.")
+                backbone_config = CONFIG_MAPPING["resnet"](out_features=["stage4"])
+            elif isinstance(backbone_config, dict):
+                backbone_model_type = backbone_config.get("model_type")
+                config_class = CONFIG_MAPPING[backbone_model_type]
+                backbone_config = config_class.from_dict(backbone_config)
+            backbone = None
+            # set timm attributes to None
+            dilation = None
+
+        verify_backbone_config_arguments(
+            use_timm_backbone=use_timm_backbone,
+            use_pretrained_backbone=use_pretrained_backbone,
+            backbone=backbone,
+            backbone_config=backbone_config,
+            backbone_kwargs=backbone_kwargs,
+        )
+
+        # Backbone.
+        self.use_timm_backbone = use_timm_backbone
+        self.backbone_config = backbone_config
+        self.num_channels = num_channels
+
         # Model.
         self.pixel_mean = pixel_mean
         self.pixel_std = pixel_std
@@ -101,4 +148,3 @@ class DiffusionDetConfig(ConfigMixin):
         self.backbone_multiplier = backbone_multiplier
 
         super().__init__()
-
