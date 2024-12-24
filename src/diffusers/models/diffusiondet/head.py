@@ -164,7 +164,6 @@ class DiffusionDetHead(nn.Module):
     def __init__(self, config, roi_input_shape, num_classes):
         super().__init__()
 
-        hidden_dim = config.hidden_dim
         dim_feedforward = config.dim_feedforward
         nhead = config.num_attn_heads
         dropout = config.dropout
@@ -174,6 +173,8 @@ class DiffusionDetHead(nn.Module):
         pooler_scales = tuple(1.0 / roi_input_shape[k]['stride'] for k in in_features)
         sampling_ratio = config.sampling_ratio
 
+        self.hidden_dim = config.hidden_dim
+
         self.pooler = ROIPooler(
             output_size=pooler_resolution,
             scales=pooler_scales,
@@ -181,16 +182,16 @@ class DiffusionDetHead(nn.Module):
         )
 
         # dynamic.
-        self.self_attn = nn.MultiheadAttention(hidden_dim, nhead, dropout=dropout)
+        self.self_attn = nn.MultiheadAttention(self.hidden_dim, nhead, dropout=dropout)
         self.inst_interact = DynamicConv(config)
 
-        self.linear1 = nn.Linear(hidden_dim, dim_feedforward)
+        self.linear1 = nn.Linear(self.hidden_dim, dim_feedforward)
         self.dropout = nn.Dropout(dropout)
-        self.linear2 = nn.Linear(dim_feedforward, hidden_dim)
+        self.linear2 = nn.Linear(dim_feedforward, self.hidden_dim)
 
-        self.norm1 = nn.LayerNorm(hidden_dim)
-        self.norm2 = nn.LayerNorm(hidden_dim)
-        self.norm3 = nn.LayerNorm(hidden_dim)
+        self.norm1 = nn.LayerNorm(self.hidden_dim)
+        self.norm2 = nn.LayerNorm(self.hidden_dim)
+        self.norm3 = nn.LayerNorm(self.hidden_dim)
         self.dropout1 = nn.Dropout(dropout)
         self.dropout2 = nn.Dropout(dropout)
         self.dropout3 = nn.Dropout(dropout)
@@ -198,14 +199,14 @@ class DiffusionDetHead(nn.Module):
         self.activation = _get_activation_fn(activation)
 
         # block time mlp
-        self.block_time_mlp = nn.Sequential(nn.SiLU(), nn.Linear(hidden_dim * 4, hidden_dim * 2))
+        self.block_time_mlp = nn.Sequential(nn.SiLU(), nn.Linear(self.hidden_dim * 4, self.hidden_dim * 2))
 
         # cls.
         num_cls = config.num_cls
         cls_module = list()
         for _ in range(num_cls):
-            cls_module.append(nn.Linear(hidden_dim, hidden_dim, False))
-            cls_module.append(nn.LayerNorm(hidden_dim))
+            cls_module.append(nn.Linear(self.hidden_dim, self.hidden_dim, False))
+            cls_module.append(nn.LayerNorm(self.hidden_dim))
             cls_module.append(nn.ReLU(inplace=True))
         self.cls_module = nn.ModuleList(cls_module)
 
@@ -213,8 +214,8 @@ class DiffusionDetHead(nn.Module):
         num_reg = config.num_reg
         reg_module = list()
         for _ in range(num_reg):
-            reg_module.append(nn.Linear(hidden_dim, hidden_dim, False))
-            reg_module.append(nn.LayerNorm(hidden_dim))
+            reg_module.append(nn.Linear(self.hidden_dim, self.hidden_dim, False))
+            reg_module.append(nn.LayerNorm(self.hidden_dim))
             reg_module.append(nn.ReLU(inplace=True))
         self.reg_module = nn.ModuleList(reg_module)
 
@@ -222,10 +223,10 @@ class DiffusionDetHead(nn.Module):
         self.use_focal = config.use_focal
         self.use_fed_loss = config.use_fed_loss
         if self.use_focal or self.use_fed_loss:
-            self.class_logits = nn.Linear(hidden_dim, num_classes)
+            self.class_logits = nn.Linear(self.hidden_dim, num_classes)
         else:
-            self.class_logits = nn.Linear(hidden_dim, num_classes + 1)
-        self.bboxes_delta = nn.Linear(hidden_dim, 4)
+            self.class_logits = nn.Linear(self.hidden_dim, num_classes + 1)
+        self.bboxes_delta = nn.Linear(self.hidden_dim, 4)
         self.scale_clamp = _DEFAULT_SCALE_CLAMP
         self.bbox_weights = (2.0, 2.0, 1.0, 1.0)
 
