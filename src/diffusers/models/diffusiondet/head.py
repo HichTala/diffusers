@@ -3,7 +3,6 @@ import math
 from dataclasses import astuple
 
 import torch
-from detectron2.model_zoo.configs.common.models.mask_rcnn_vitdet import num_heads
 from torch import nn
 from torch.nn.modules.transformer import _get_activation_fn
 from torchvision.ops import RoIAlign
@@ -60,7 +59,7 @@ class DynamicHead(nn.Module):
 
         ddet_head = DiffusionDetHead(config, roi_input_shape, num_classes)
         self.num_head = config.num_heads
-        self.head_series = nn.ModuleList([copy.deepcopy(ddet_head) for _ in range(num_heads)])
+        self.head_series = nn.ModuleList([copy.deepcopy(ddet_head) for _ in range(self.num_head)])
         self.return_intermediate = config.deep_supervision
 
         # Gaussian random feature embedding layer for time
