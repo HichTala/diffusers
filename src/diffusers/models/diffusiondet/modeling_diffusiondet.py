@@ -50,6 +50,7 @@ class DiffusionDet(nn.Module):
         self.in_features = config.roi_head_in_features
         self.num_classes = 80
         self.num_proposals = config.num_proposals
+        self.num_heads = config.num_heads
 
         self.preprocess_image = None
         self.backbone = None  # load_backbone(config)
