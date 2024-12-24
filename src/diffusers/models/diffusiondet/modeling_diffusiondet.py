@@ -52,8 +52,7 @@ class DiffusionDet(nn.Module):
         self.num_proposals = config.num_proposals
         self.num_heads = config.num_heads
 
-        self.preprocess_image = None
-        self.backbone = None  # load_backbone(config)
+        self.backbone = load_backbone(config)
 
         # build diffusion
         betas = cosine_beta_schedule(1000)
@@ -193,20 +192,22 @@ class DiffusionDet(nn.Module):
             processed_results.append({"instances": r})
         return processed_results
 
-    def forward(self, batched_inputs, do_postprocess=True):
+    def forward(self, x):
         """
         Args:
         """
-        features = [torch.rand(1, 256, i, i) for i in [144, 72, 36, 18]]
-        x_boxes = torch.rand(1, 300, 4)
-        t = torch.rand(1)
-        targets = None
+        images, labels = x['pixel_values'], x['labels']
 
+        features = self.backbone(images)
+        # TODO: implement FPN
+
+        features = [torch.rand(1, 256, i, i) for i in [144, 72, 36, 18]]
         if not self.training:
             return self.ddim_sample()
 
         if self.training:
-            outputs_class, outputs_coord = self.head(features, x_boxes, t)
+            targets, x_boxes, noises, ts = self.prepare_targets(labels)
+            outputs_class, outputs_coord = self.head(features, x_boxes, ts)
             output = {'pred_logits': outputs_class[-1], 'pred_boxes': outputs_coord[-1]}
 
             if self.deep_supervision:
@@ -219,6 +220,70 @@ class DiffusionDet(nn.Module):
                 if k in weight_dict:
                     loss_dict[k] *= weight_dict[k]
             return loss_dict
+
+    def prepare_diffusion_concat(self, gt_boxes):
+        """
+        :param gt_boxes: (cx, cy, w, h), normalized
+        :param num_proposals:
+        """
+        t = torch.randint(0, self.num_timesteps, (1,), device=self.device).long()
+        noise = torch.randn(self.num_proposals, 4, device=self.device)
+
+        num_gt = gt_boxes.shape[0]
+        if not num_gt:  # generate fake gt boxes if empty gt boxes
+            gt_boxes = torch.as_tensor([[0.5, 0.5, 1., 1.]], dtype=torch.float, device=self.device)
+            num_gt = 1
+
+        if num_gt < self.num_proposals:
+            box_placeholder = torch.randn(self.num_proposals - num_gt, 4,
+                                          device=self.device) / 6. + 0.5  # 3sigma = 1/2 --> sigma: 1/6
+            box_placeholder[:, 2:] = torch.clip(box_placeholder[:, 2:], min=1e-4)
+            x_start = torch.cat((gt_boxes, box_placeholder), dim=0)
+        elif num_gt > self.num_proposals:
+            select_mask = [True] * self.num_proposals + [False] * (num_gt - self.num_proposals)
+            random.shuffle(select_mask)
+            x_start = gt_boxes[select_mask]
+        else:
+            x_start = gt_boxes
+
+        x_start = (x_start * 2. - 1.) * self.scale
+
+        # noise sample
+        x = self.q_sample(x_start=x_start, t=t, noise=noise)
+
+        x = torch.clamp(x, min=-1 * self.scale, max=self.scale)
+        x = ((x / self.scale) + 1) / 2.
+
+        diff_boxes = box_cxcywh_to_xyxy(x)
+
+        return diff_boxes, noise, t
+
+    def prepare_targets(self, targets):
+        new_targets = []
+        diffused_boxes = []
+        noises = []
+        ts = []
+        for targets_per_image in targets:
+            target = {}
+            h, w = targets_per_image.image_size
+            image_size_xyxy = torch.as_tensor([w, h, w, h], dtype=torch.float, device=self.device)
+            gt_classes = targets_per_image.gt_classes
+            gt_boxes = targets_per_image.gt_boxes.tensor / image_size_xyxy
+            gt_boxes = box_xyxy_to_cxcywh(gt_boxes)
+            d_boxes, d_noise, d_t = self.prepare_diffusion_concat(gt_boxes)
+            diffused_boxes.append(d_boxes)
+            noises.append(d_noise)
+            ts.append(d_t)
+            target["labels"] = gt_classes.to(self.device)
+            target["boxes"] = gt_boxes.to(self.device)
+            target["boxes_xyxy"] = targets_per_image.gt_boxes.tensor.to(self.device)
+            target["image_size_xyxy"] = image_size_xyxy.to(self.device)
+            image_size_xyxy_tgt = image_size_xyxy.unsqueeze(0).repeat(len(gt_boxes), 1)
+            target["image_size_xyxy_tgt"] = image_size_xyxy_tgt.to(self.device)
+            target["area"] = targets_per_image.gt_boxes.area().to(self.device)
+            new_targets.append(target)
+
+        return new_targets, torch.stack(diffused_boxes), torch.stack(noises), torch.stack(ts)
 
     def inference(self, box_cls, box_pred, image_sizes):
         """
@@ -282,5 +347,3 @@ class DiffusionDet(nn.Module):
                 results = None
 
         return results
-
-

@@ -89,6 +89,10 @@ class DiffusionDetConfig(ConfigMixin):
         self.use_timm_backbone = use_timm_backbone
         self.backbone_config = backbone_config
         self.num_channels = num_channels
+        self.backbone = backbone
+        self.use_pretrained_backbone = use_pretrained_backbone
+        self.backbone_kwargs = backbone_kwargs
+        self.dilation = dilation
 
         # Model.
         self.pixel_mean = pixel_mean
