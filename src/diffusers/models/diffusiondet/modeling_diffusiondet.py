@@ -1,4 +1,5 @@
 import math
+import random
 from collections import namedtuple
 
 import torch
@@ -20,13 +21,20 @@ def default(val, d):
     return d() if callable(d) else d
 
 
+def extract(a, t, x_shape):
+    """extract the appropriate  t  index for a batch of indices"""
+    batch_size = t.shape[0]
+    out = a.gather(-1, t)
+    return out.reshape(batch_size, *((1,) * (len(x_shape) - 1)))
+
+
 def cosine_beta_schedule(timesteps, s=0.008):
     """
     cosine schedule
     as proposed in https://openreview.net/forum?id=-NEXDKk8gZ
     """
     steps = timesteps + 1
-    x = torch.linspace(0, timesteps, steps, dtype=torch.float64)
+    x = torch.linspace(0, timesteps, steps)
     alphas_cumprod = torch.cos(((x / timesteps) + s) / (1 + s) * math.pi * 0.5) ** 2
     alphas_cumprod = alphas_cumprod / alphas_cumprod[0]
     betas = 1 - (alphas_cumprod[1:] / alphas_cumprod[:-1])
@@ -61,11 +69,18 @@ class DiffusionDet(nn.Module):
 
         timesteps, = betas.shape
         sampling_timesteps = config.sample_step
+
+        self.register_buffer('alphas_cumprod', alphas_cumprod)
+        self.register_buffer('sqrt_one_minus_alphas_cumprod', torch.sqrt(1. - alphas_cumprod))
+        self.register_buffer('sqrt_alphas_cumprod', torch.sqrt(alphas_cumprod))
+        self.register_buffer('sqrt_recip_alphas_cumprod', torch.sqrt(1. / alphas_cumprod))
+        self.register_buffer('sqrt_recipm1_alphas_cumprod', torch.sqrt(1. / alphas_cumprod - 1))
+
         self.num_timesteps = int(timesteps)
         self.sampling_timesteps = default(sampling_timesteps, timesteps)
-        assert self.sampling_timesteps <= timesteps
         self.ddim_sampling_eta = 1.
         self.scale = config.snr_scale
+        assert self.sampling_timesteps <= timesteps
 
         roi_input_shape = {
             'p2': {'stride': 4},
@@ -91,6 +106,12 @@ class DiffusionDet(nn.Module):
             weight_dict.update(aux_weight_dict)
 
         self.criterion = CriterionDynamicK(config, num_classes=self.num_classes, weight_dict=weight_dict)
+
+    def predict_noise_from_start(self, x_t, t, x0):
+        return (
+                (extract(self.sqrt_recip_alphas_cumprod, t, x_t.shape) * x_t - x0) /
+                extract(self.sqrt_recipm1_alphas_cumprod, t, x_t.shape)
+        )
 
     def model_predictions(self, backbone_feats, images_whwh, x, t):
         x_boxes = torch.clamp(x, min=-1 * self.scale, max=self.scale)
@@ -192,21 +213,41 @@ class DiffusionDet(nn.Module):
             processed_results.append({"instances": r})
         return processed_results
 
+    def q_sample(self, x_start, t, noise=None):
+        if noise is None:
+            noise = torch.randn_like(x_start)
+
+        sqrt_alphas_cumprod_t = extract(self.sqrt_alphas_cumprod, t, x_start.shape)
+        sqrt_one_minus_alphas_cumprod_t = extract(self.sqrt_one_minus_alphas_cumprod, t, x_start.shape)
+
+        return sqrt_alphas_cumprod_t * x_start + sqrt_one_minus_alphas_cumprod_t * noise
+
     def forward(self, x):
         """
         Args:
         """
-        images, labels = x['pixel_values'], x['labels']
+        images = x['pixel_values'].to(self.device)
+        labels = list(map(lambda tensor: tensor.to(self.device), x['labels']))
 
         features = self.backbone(images)
         # TODO: implement FPN
 
-        features = [torch.rand(1, 256, i, i) for i in [144, 72, 36, 18]]
+        features = [torch.rand(8, 256, i, i, dtype=features.feature_maps[0].dtype).to(self.device) for i in [144, 72, 36, 18]]
         if not self.training:
             return self.ddim_sample()
 
         if self.training:
+
             targets, x_boxes, noises, ts = self.prepare_targets(labels)
+
+            ts = ts.squeeze(-1)
+            images_whwh = list()
+            for image in images:
+                h, w = image.shape[-2:]
+                images_whwh.append(torch.tensor([w, h, w, h], device=self.device))
+            images_whwh = torch.stack(images_whwh)
+            x_boxes = x_boxes * images_whwh[:, None, :]
+
             outputs_class, outputs_coord = self.head(features, x_boxes, ts)
             output = {'pred_logits': outputs_class[-1], 'pred_boxes': outputs_coord[-1]}
 
@@ -254,7 +295,7 @@ class DiffusionDet(nn.Module):
         x = torch.clamp(x, min=-1 * self.scale, max=self.scale)
         x = ((x / self.scale) + 1) / 2.
 
-        diff_boxes = box_cxcywh_to_xyxy(x)
+        diff_boxes = ops.box_convert(x, 'cxcywh', 'xyxy')
 
         return diff_boxes, noise, t
 
@@ -263,25 +304,26 @@ class DiffusionDet(nn.Module):
         diffused_boxes = []
         noises = []
         ts = []
-        for targets_per_image in targets:
-            target = {}
-            h, w = targets_per_image.image_size
+        for target in targets:
+            h, w = target.size
             image_size_xyxy = torch.as_tensor([w, h, w, h], dtype=torch.float, device=self.device)
-            gt_classes = targets_per_image.gt_classes
-            gt_boxes = targets_per_image.gt_boxes.tensor / image_size_xyxy
-            gt_boxes = box_xyxy_to_cxcywh(gt_boxes)
+            gt_classes = target.class_labels.to(self.device)
+            gt_boxes = target.boxes.to(self.device) / image_size_xyxy
+            gt_boxes = ops.box_convert(gt_boxes, 'xyxy', 'cxcywh')
             d_boxes, d_noise, d_t = self.prepare_diffusion_concat(gt_boxes)
+            image_size_xyxy_tgt = image_size_xyxy.unsqueeze(0).repeat(len(gt_boxes), 1)
+
             diffused_boxes.append(d_boxes)
             noises.append(d_noise)
             ts.append(d_t)
-            target["labels"] = gt_classes.to(self.device)
-            target["boxes"] = gt_boxes.to(self.device)
-            target["boxes_xyxy"] = targets_per_image.gt_boxes.tensor.to(self.device)
-            target["image_size_xyxy"] = image_size_xyxy.to(self.device)
-            image_size_xyxy_tgt = image_size_xyxy.unsqueeze(0).repeat(len(gt_boxes), 1)
-            target["image_size_xyxy_tgt"] = image_size_xyxy_tgt.to(self.device)
-            target["area"] = targets_per_image.gt_boxes.area().to(self.device)
-            new_targets.append(target)
+            new_targets.append({
+                "labels": gt_classes,
+                "boxes": gt_boxes,
+                "boxes_xyxy": target.boxes.to(self.device),
+                "image_size_xyxy": image_size_xyxy.to(self.device),
+                "image_size_xyxy_tgt": image_size_xyxy_tgt.to(self.device),
+                "area": ops.box_area(target.boxes.to(self.device)),
+            })
 
         return new_targets, torch.stack(diffused_boxes), torch.stack(noises), torch.stack(ts)
 

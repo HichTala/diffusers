@@ -11,7 +11,7 @@ _DEFAULT_SCALE_CLAMP = math.log(1000.0 / 16)
 
 def convert_boxes_to_pooler_format(bboxes):
     bs, num_proposals = bboxes.shape[:2]
-    sizes = torch.full((bs,), num_proposals)
+    sizes = torch.full((bs,), num_proposals).to(bboxes.device)
     aggregated_bboxes = bboxes.view(bs * num_proposals, -1)
     indices = torch.repeat_interleave(
         torch.arange(len(sizes), dtype=aggregated_bboxes.dtype, device=aggregated_bboxes.device), sizes

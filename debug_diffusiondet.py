@@ -138,10 +138,10 @@ def main():
     )
 
     config = DiffusionDetConfig()
-    model = DiffusionDet(config)
+    model = DiffusionDet(config).cuda()
 
     for i, batch_sample in enumerate(train_dataloader):
-        model(batch_sample)
+         model(batch_sample)
 
 
 if __name__ == '__main__':
