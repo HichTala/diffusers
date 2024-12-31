@@ -93,7 +93,7 @@ class DynamicHead(nn.Module):
                     nn.init.constant_(p, self.bias_value)
 
 
-    def forward(self, features, bboxes, t, targets):
+    def forward(self, features, bboxes, t):
         # assert t shape (batch_size)
         time = self.time_mlp(t)
 
