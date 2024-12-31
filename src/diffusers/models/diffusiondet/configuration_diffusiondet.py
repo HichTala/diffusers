@@ -18,6 +18,7 @@ class DiffusionDetConfig(ConfigMixin):
             resnet_out_features=("res2", "res3", "res4", "res5"),
             resnet_in_features=("res2", "res3", "res4", "res5"),
             roi_head_in_features=("p2", "p3", "p4", "p5"),
+            fpn_out_channels=256,
             pooler_resolution=7,
             sampling_ratio=2,
             num_proposals=300,
@@ -93,6 +94,7 @@ class DiffusionDetConfig(ConfigMixin):
         self.use_pretrained_backbone = use_pretrained_backbone
         self.backbone_kwargs = backbone_kwargs
         self.dilation = dilation
+        self.fpn_out_channels = fpn_out_channels
 
         # Model.
         self.pixel_mean = pixel_mean

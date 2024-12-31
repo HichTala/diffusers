@@ -65,7 +65,6 @@ class CriterionDynamicK(nn.Module):
         self.eos_coef = config.no_object_weight
         self.use_focal = config.use_focal
         self.use_fed_loss = config.use_fed_loss
-        self.losses =  ["labels", "boxes"]
 
         if self.use_focal:
             self.focal_loss_alpha = config.alpha
@@ -218,8 +217,10 @@ class CriterionDynamicK(nn.Module):
         # In case of auxiliary losses, we repeat this process with the output of each intermediate layer.
         if 'aux_outputs' in outputs:
             for i, aux_outputs in enumerate(outputs['aux_outputs']):
+                print('num aux outputs', i)
+                # breakpoint()
                 indices, _ = self.matcher(aux_outputs, targets)
-                for loss in self.losses:
+                for loss in ["labels", "boxes"]:
                     if loss == 'masks':
                         # Intermediate masks losses are too costly to compute, we ignore them.
                         continue
@@ -305,6 +306,8 @@ class HungarianMatcherDynamicK(nn.Module):
             matched_ids = []
             assert bs == len(targets)
             for batch_idx in range(bs):
+                print('batch_idx', batch_idx)
+                # breakpoint()
                 bz_boxes = out_bbox[batch_idx]  # [num_proposals, 4]
                 bz_out_prob = out_prob[batch_idx]
                 bz_tgt_ids = targets[batch_idx]["labels"]
@@ -391,7 +394,10 @@ class HungarianMatcherDynamicK(nn.Module):
             matching_matrix[anchor_matching_gt > 1] *= 0
             matching_matrix[anchor_matching_gt > 1, cost_argmin,] = 1
 
+        matching_matrix_sum_test = (matching_matrix.sum(0) == 0).any()
         while (matching_matrix.sum(0) == 0).any():
+            print('matching_matrix_sum_test', matching_matrix_sum_test)
+            # breakpoint()
             num_zero_gt = (matching_matrix.sum(0) == 0).sum()
             matched_query_id = matching_matrix.sum(1) > 0
             cost[matched_query_id] += 100000.0
@@ -404,6 +410,7 @@ class HungarianMatcherDynamicK(nn.Module):
                                            dim=1)  # find gt for these queries with minimal cost
                 matching_matrix[anchor_matching_gt > 1] *= 0  # reset mapping relationship
                 matching_matrix[anchor_matching_gt > 1, cost_argmin,] = 1  # keep gt with minimal cost
+            matching_matrix_sum_test = (matching_matrix.sum(0) == 0).any()
 
         assert not (matching_matrix.sum(0) == 0).any()
         selected_query = matching_matrix.sum(1) > 0

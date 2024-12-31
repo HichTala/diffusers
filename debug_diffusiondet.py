@@ -9,11 +9,9 @@ from torch.utils.data import DataLoader
 from transformers import BatchFeature, AutoImageProcessor
 import albumentations as A
 
-from diffusers.models.diffusiondet.image_processing_diffusiondet import DiffusionDetImageProcessor
-
-
-from diffusers.models.diffusiondet.configuration_diffusiondet import DiffusionDetConfig
-from diffusers.models.diffusiondet.modeling_diffusiondet import DiffusionDet
+from src.diffusers.models.diffusiondet.configuration_diffusiondet import DiffusionDetConfig
+from src.diffusers.models.diffusiondet.image_processing_diffusiondet import DiffusionDetImageProcessor
+from src.diffusers.models.diffusiondet.modeling_diffusiondet import DiffusionDet
 
 def format_image_annotations_as_coco(
         image_id: str, categories: List[int], areas: List[float], bboxes: List[Tuple[float]]
@@ -141,7 +139,8 @@ def main():
     model = DiffusionDet(config).cuda()
 
     for i, batch_sample in enumerate(train_dataloader):
-         model(batch_sample)
+        print(batch_sample["pixel_values"].shape)
+        model(batch_sample)
 
 
 if __name__ == '__main__':
