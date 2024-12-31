@@ -277,6 +277,46 @@ class DiffusionDetHead(nn.Module):
 
         return class_logits.view(bs, num_proposals, -1), pred_bboxes.view(bs, num_proposals, -1), obj_features
 
+    def apply_deltas(self, deltas, boxes):
+        """
+        Apply transformation `deltas` (dx, dy, dw, dh) to `boxes`.
+
+        Args:
+            deltas (Tensor): transformation deltas of shape (N, k*4), where k >= 1.
+                deltas[i] represents k potentially different class-specific
+                box transformations for the single box boxes[i].
+            boxes (Tensor): boxes to transform, of shape (N, 4)
+        """
+        boxes = boxes.to(deltas.dtype)
+
+        widths = boxes[:, 2] - boxes[:, 0]
+        heights = boxes[:, 3] - boxes[:, 1]
+        ctr_x = boxes[:, 0] + 0.5 * widths
+        ctr_y = boxes[:, 1] + 0.5 * heights
+
+        wx, wy, ww, wh = self.bbox_weights
+        dx = deltas[:, 0::4] / wx
+        dy = deltas[:, 1::4] / wy
+        dw = deltas[:, 2::4] / ww
+        dh = deltas[:, 3::4] / wh
+
+        # Prevent sending too large values into torch.exp()
+        dw = torch.clamp(dw, max=self.scale_clamp)
+        dh = torch.clamp(dh, max=self.scale_clamp)
+
+        pred_ctr_x = dx * widths[:, None] + ctr_x[:, None]
+        pred_ctr_y = dy * heights[:, None] + ctr_y[:, None]
+        pred_w = torch.exp(dw) * widths[:, None]
+        pred_h = torch.exp(dh) * heights[:, None]
+
+        pred_boxes = torch.zeros_like(deltas)
+        pred_boxes[:, 0::4] = pred_ctr_x - 0.5 * pred_w  # x1
+        pred_boxes[:, 1::4] = pred_ctr_y - 0.5 * pred_h  # y1
+        pred_boxes[:, 2::4] = pred_ctr_x + 0.5 * pred_w  # x2
+        pred_boxes[:, 3::4] = pred_ctr_y + 0.5 * pred_h  # y2
+
+        return pred_boxes
+
 
 class ROIPooler(nn.Module):
     """
