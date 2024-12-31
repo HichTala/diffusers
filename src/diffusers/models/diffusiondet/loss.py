@@ -65,6 +65,7 @@ class CriterionDynamicK(nn.Module):
         self.eos_coef = config.no_object_weight
         self.use_focal = config.use_focal
         self.use_fed_loss = config.use_fed_loss
+        self.losses =  ["labels", "boxes"]
 
         if self.use_focal:
             self.focal_loss_alpha = config.alpha
@@ -189,13 +190,13 @@ class CriterionDynamicK(nn.Module):
 
         return losses
 
-    def get_loss(self, loss, outputs, targets, indices, num_boxes, **kwargs):
+    def get_loss(self, loss, outputs, targets, indices):
         loss_map = {
             'labels': self.loss_labels,
             'boxes': self.loss_boxes,
         }
         assert loss in loss_map, f'do you really want to compute {loss} loss?'
-        return loss_map[loss](outputs, targets, indices, num_boxes, **kwargs)
+        return loss_map[loss](outputs, targets, indices)
 
     def forward(self, outputs, targets):
         """ This performs the loss computation.
@@ -209,19 +210,10 @@ class CriterionDynamicK(nn.Module):
         # Retrieve the matching between the outputs of the last layer and the targets
         indices, _ = self.matcher(outputs_without_aux, targets)
 
-        # Compute the average number of target boxes accross all nodes, for normalization purposes
-        num_boxes = sum(len(t["labels"]) for t in targets)
-        num_boxes = torch.as_tensor([num_boxes], dtype=torch.float, device=next(iter(outputs.values())).device)
-        if is_dist_avail_and_initialized():
-            torch.distributed.all_reduce(num_boxes)
-            num_boxes = torch.clamp(num_boxes / get_world_size(), min=1).item()
-        else:
-            num_boxes = torch.clamp(num_boxes, min=1).item()
-
         # Compute all the requested losses
         losses = {}
         for loss in ["labels", "boxes"]:
-            losses.update(self.get_loss(loss, outputs, targets, indices, num_boxes))
+            losses.update(self.get_loss(loss, outputs, targets, indices))
 
         # In case of auxiliary losses, we repeat this process with the output of each intermediate layer.
         if 'aux_outputs' in outputs:
@@ -231,11 +223,8 @@ class CriterionDynamicK(nn.Module):
                     if loss == 'masks':
                         # Intermediate masks losses are too costly to compute, we ignore them.
                         continue
-                    kwargs = {}
-                    if loss == 'labels':
-                        # Logging is enabled only for the last layer
-                        kwargs = {'log': False}
-                    l_dict = self.get_loss(loss, aux_outputs, targets, indices, num_boxes, **kwargs)
+
+                    l_dict = self.get_loss(loss, aux_outputs, targets, indices)
                     l_dict = {k + f'_{i}': v for k, v in l_dict.items()}
                     losses.update(l_dict)
 
