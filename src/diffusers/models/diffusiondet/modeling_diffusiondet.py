@@ -9,7 +9,7 @@ from torch.nn.functional import l1_loss
 from torchvision import ops
 from transformers.utils.backbone_utils import load_backbone
 
-from diffusers.models.diffusiondet.head import DiffusionDetHead
+from diffusers.models.diffusiondet.head import DiffusionDetHead, DynamicHead
 from diffusers.models.diffusiondet.loss import HungarianMatcherDynamicK, CriterionDynamicK
 
 ModelPrediction = namedtuple('ModelPrediction', ['pred_noise', 'pred_x_start'])
@@ -89,7 +89,7 @@ class DiffusionDet(nn.Module):
             'p5': {'stride': 32},
             'p6': {'stride': 64}
         }
-        self.head = DiffusionDetHead(config, roi_input_shape=roi_input_shape, num_classes=self.num_classes)
+        self.head = DynamicHead(config, roi_input_shape=roi_input_shape)
 
         self.deep_supervision = config.deep_supervision
         self.use_focal = config.use_focal
