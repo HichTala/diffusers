@@ -66,7 +66,7 @@ class DiffusionDet(nn.Module):
         self.fpn = FeaturePyramidNetwork(
             in_channels_list=self.backbone.channels,
             out_channels=config.fpn_out_channels,
-            extra_blocks=LastLevelMaxPool(),
+            # extra_blocks=LastLevelMaxPool(),
         )
 
         # build diffusion
@@ -213,9 +213,6 @@ class DiffusionDet(nn.Module):
             box_pred = output["pred_boxes"]
             results = self.inference(box_cls, box_pred, images.image_sizes)
         processed_results = []
-        self.resnet_out_features = resnet_out_features
-        self.resnet_in_features = resnet_in_features
-        self.roi_head_in_features = roi_head_in_features
         for results_per_image, input_per_image, image_size in zip(results, batched_inputs, images.image_sizes):
             height = input_per_image.get("height", image_size[0])
             width = input_per_image.get("width", image_size[1])
@@ -241,12 +238,11 @@ class DiffusionDet(nn.Module):
 
         features = self.backbone(images)
         features = OrderedDict(
-            [(key, feature) for key, feature in zip(self.backbone.return_layers, features.feature_maps)]
+            [(key, feature) for key, feature in zip(self.backbone.out_features, features.feature_maps)]
         )
-        features = self.fpn(features.feature_maps)
+        features = self.fpn(features)   # [144, 72, 36, 18]
+        features = [features[f] for f in features.keys()]
 
-        features = [torch.rand(8, 256, i, i, dtype=features.feature_maps[0].dtype).to(self.device) for i in
-                    [144, 72, 36, 18]]
         if not self.training:
             return self.ddim_sample()
 
