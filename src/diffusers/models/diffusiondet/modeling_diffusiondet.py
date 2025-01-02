@@ -11,7 +11,7 @@ from torchvision.ops.feature_pyramid_network import LastLevelMaxPool, FeaturePyr
 from transformers.utils.backbone_utils import load_backbone
 
 from .fpn import FPN
-from .head import DynamicHead
+from .head import HeadDynamicK
 from .loss import CriterionDynamicK
 
 ModelPrediction = namedtuple('ModelPrediction', ['pred_noise', 'pred_x_start'])
@@ -96,7 +96,7 @@ class DiffusionDet(nn.Module):
             'p5': {'stride': 32},
             'p6': {'stride': 64}
         }
-        self.head = DynamicHead(config, roi_input_shape=roi_input_shape)
+        self.head = HeadDynamicK(config, roi_input_shape=roi_input_shape)
 
         self.deep_supervision = config.deep_supervision
         self.use_focal = config.use_focal
@@ -318,18 +318,19 @@ class DiffusionDet(nn.Module):
             h, w = target.size
             image_size_xyxy = torch.as_tensor([w, h, w, h], dtype=torch.float, device=self.device)
             gt_classes = target.class_labels.to(self.device)
-            gt_boxes = target.boxes.to(self.device) / image_size_xyxy
-            gt_boxes = ops.box_convert(gt_boxes, 'xyxy', 'cxcywh')
+            gt_boxes = target.boxes.to(self.device)
             d_boxes, d_noise, d_t = self.prepare_diffusion_concat(gt_boxes)
             image_size_xyxy_tgt = image_size_xyxy.unsqueeze(0).repeat(len(gt_boxes), 1)
+            gt_boxes = gt_boxes * image_size_xyxy
+            gt_boxes = ops.box_convert(gt_boxes, 'cxcywh', 'xyxy')
 
             diffused_boxes.append(d_boxes)
             noises.append(d_noise)
             ts.append(d_t)
             new_targets.append({
                 "labels": gt_classes,
-                "boxes": gt_boxes,
-                "boxes_xyxy": target.boxes.to(self.device),
+                "boxes": target.boxes.to(self.device),
+                "boxes_xyxy": gt_boxes,
                 "image_size_xyxy": image_size_xyxy.to(self.device),
                 "image_size_xyxy_tgt": image_size_xyxy_tgt.to(self.device),
                 "area": ops.box_area(target.boxes.to(self.device)),

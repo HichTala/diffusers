@@ -52,7 +52,7 @@ class SinusoidalPositionEmbeddings(nn.Module):
         return embeddings
 
 
-class DynamicHead(nn.Module):
+class HeadDynamicK(nn.Module):
     def __init__(self, config, roi_input_shape):
         super().__init__()
         num_classes = 80
