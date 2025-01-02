@@ -139,8 +139,10 @@ def main():
     model = DiffusionDet(config).cuda()
 
     for i, batch_sample in enumerate(train_dataloader):
-        print(batch_sample["pixel_values"].shape)
-        model(batch_sample)
+        model.eval()
+        loss_dict = model(batch_sample)
+        break
+
 
 
 if __name__ == '__main__':

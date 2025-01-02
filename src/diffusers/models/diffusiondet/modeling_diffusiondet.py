@@ -199,26 +199,18 @@ class DiffusionDet(nn.Module):
             labels_per_image = torch.cat(ensemble_label, dim=0)
 
             if self.use_nms:
-                # TODO: verify if the box_pred_per_image is in right format
                 keep = ops.batched_nms(box_pred_per_image, scores_per_image, labels_per_image, 0.5)
                 box_pred_per_image = box_pred_per_image[keep]
                 scores_per_image = scores_per_image[keep]
                 labels_per_image = labels_per_image[keep]
 
-            # TODO: choose the right format to save results
-            results = None
+            return {
+                'pred_boxes': box_pred_per_image,
+                'scores': scores_per_image,
+                'pred_classes': labels_per_image
+            }
         else:
-            output = {'pred_logits': outputs_class[-1], 'pred_boxes': outputs_coord[-1]}
-            box_cls = output["pred_logits"]
-            box_pred = output["pred_boxes"]
-            results = self.inference(box_cls, box_pred)
-        processed_results = []
-        for results_per_image, input_per_image, image_size in zip(results, batched_inputs, image_sizes):
-            height = input_per_image.get("height", image_size[1])
-            width = input_per_image.get("width", image_size[2])
-            r = detector_postprocess(results_per_image, height, width)
-            processed_results.append({"instances": r})
-        return processed_results
+            return self.inference(outputs_class[-1], outputs_coord[-1])
 
     def q_sample(self, x_start, t, noise=None):
         if noise is None:
@@ -374,8 +366,11 @@ class DiffusionDet(nn.Module):
                     scores_per_image = scores_per_image[keep]
                     labels_per_image = labels_per_image[keep]
 
-                # TODO: choose the right format to save results
-                results = None
+                results.append({
+                    "pred_boxes": box_pred_per_image,
+                    "scores": scores_per_image,
+                    "pred_classes": labels_per_image
+                })
         else:
             # For each box we assign the best class or the second best if the best on is `no_object`.
             scores, labels = F.softmax(box_cls, dim=-1)[:, :, :-1].max(-1)
@@ -387,13 +382,15 @@ class DiffusionDet(nn.Module):
                     return box_pred_per_image, scores_per_image, labels_per_image
 
                 if self.use_nms:
-                    # TODO: verify if the box_pred_per_image is in right format
                     keep = ops.batched_nms(box_pred_per_image, scores_per_image, labels_per_image, 0.5)
                     box_pred_per_image = box_pred_per_image[keep]
                     scores_per_image = scores_per_image[keep]
                     labels_per_image = labels_per_image[keep]
 
-                # TODO: choose the right format to save results
-                results = None
+                results.append({
+                    "pred_boxes": box_pred_per_image,
+                    "scores": scores_per_image,
+                    "pred_classes": labels_per_image
+                })
 
         return results
