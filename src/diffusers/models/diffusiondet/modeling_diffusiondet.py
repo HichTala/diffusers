@@ -200,7 +200,7 @@ class DiffusionDet(nn.Module):
 
             if self.use_nms:
                 # TODO: verify if the box_pred_per_image is in right format
-                keep = ops.nms(box_pred_per_image, scores_per_image, labels_per_image, 0.5)
+                keep = ops.batched_nms(box_pred_per_image, scores_per_image, labels_per_image, 0.5)
                 box_pred_per_image = box_pred_per_image[keep]
                 scores_per_image = scores_per_image[keep]
                 labels_per_image = labels_per_image[keep]
@@ -369,8 +369,7 @@ class DiffusionDet(nn.Module):
                     return box_pred_per_image, scores_per_image, labels_per_image
 
                 if self.use_nms:
-                    # TODO: verify if the box_pred_per_image is in right format
-                    keep = ops.nms(box_pred_per_image, scores_per_image, labels_per_image, 0.5)
+                    keep = ops.batched_nms(box_pred_per_image, scores_per_image, labels_per_image, 0.5)
                     box_pred_per_image = box_pred_per_image[keep]
                     scores_per_image = scores_per_image[keep]
                     labels_per_image = labels_per_image[keep]
@@ -389,7 +388,7 @@ class DiffusionDet(nn.Module):
 
                 if self.use_nms:
                     # TODO: verify if the box_pred_per_image is in right format
-                    keep = ops.nms(box_pred_per_image, scores_per_image, labels_per_image, 0.5)
+                    keep = ops.batched_nms(box_pred_per_image, scores_per_image, labels_per_image, 0.5)
                     box_pred_per_image = box_pred_per_image[keep]
                     scores_per_image = scores_per_image[keep]
                     labels_per_image = labels_per_image[keep]
