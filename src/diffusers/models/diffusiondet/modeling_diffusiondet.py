@@ -125,7 +125,7 @@ class DiffusionDet(nn.Module):
         x_boxes = ((x_boxes / self.scale) + 1) / 2
         x_boxes = ops.box_convert(x_boxes, 'cxcywh', 'xyxy')
         x_boxes = x_boxes * images_whwh[:, None, :]
-        outputs_class, outputs_coord = self.head(backbone_feats, x_boxes, t, None)
+        outputs_class, outputs_coord = self.head(backbone_feats, x_boxes, t)
 
         x_start = outputs_coord[-1]  # (batch, num_proposals, 4) predict boxes: absolute coordinates (x1, y1, x2, y2)
         x_start = x_start / images_whwh[:, None, :]
@@ -137,8 +137,9 @@ class DiffusionDet(nn.Module):
         return ModelPrediction(pred_noise, x_start), outputs_class, outputs_coord
 
     @torch.no_grad()
-    def ddim_sample(self, batched_inputs, backbone_feats, images_whwh, images):
-        bs = 1
+    def ddim_sample(self, batched_inputs, backbone_feats, images_whwh):
+        bs = len(batched_inputs['pixel_values'])
+        image_sizes = batched_inputs['pixel_values'].shape
         shape = (bs, self.num_proposals, 4)
 
         # [-1, 0, 1, 2, ..., T-1] when sampling_timesteps == total_timesteps
@@ -187,8 +188,7 @@ class DiffusionDet(nn.Module):
 
             if self.sampling_timesteps > 1:
                 box_pred_per_image, scores_per_image, labels_per_image = self.inference(outputs_class[-1],
-                                                                                        outputs_coord[-1],
-                                                                                        images.image_sizes)
+                                                                                        outputs_coord[-1])
                 ensemble_score.append(scores_per_image)
                 ensemble_label.append(labels_per_image)
                 ensemble_coord.append(box_pred_per_image)
@@ -211,11 +211,11 @@ class DiffusionDet(nn.Module):
             output = {'pred_logits': outputs_class[-1], 'pred_boxes': outputs_coord[-1]}
             box_cls = output["pred_logits"]
             box_pred = output["pred_boxes"]
-            results = self.inference(box_cls, box_pred, images.image_sizes)
+            results = self.inference(box_cls, box_pred)
         processed_results = []
-        for results_per_image, input_per_image, image_size in zip(results, batched_inputs, images.image_sizes):
-            height = input_per_image.get("height", image_size[0])
-            width = input_per_image.get("width", image_size[1])
+        for results_per_image, input_per_image, image_size in zip(results, batched_inputs, image_sizes):
+            height = input_per_image.get("height", image_size[1])
+            width = input_per_image.get("width", image_size[2])
             r = detector_postprocess(results_per_image, height, width)
             processed_results.append({"instances": r})
         return processed_results
@@ -234,28 +234,27 @@ class DiffusionDet(nn.Module):
         Args:
         """
         images = x['pixel_values'].to(self.device)
-        labels = list(map(lambda tensor: tensor.to(self.device), x['labels']))
+        images_whwh = list()
+        for image in images:
+            h, w = image.shape[-2:]
+            images_whwh.append(torch.tensor([w, h, w, h], device=self.device))
+        images_whwh = torch.stack(images_whwh)
 
         features = self.backbone(images)
         features = OrderedDict(
             [(key, feature) for key, feature in zip(self.backbone.out_features, features.feature_maps)]
         )
-        features = self.fpn(features)   # [144, 72, 36, 18]
+        features = self.fpn(features)  # [144, 72, 36, 18]
         features = [features[f] for f in features.keys()]
 
         if not self.training:
-            return self.ddim_sample()
+            return self.ddim_sample(x, features, images_whwh)
 
         if self.training:
-
+            labels = list(map(lambda tensor: tensor.to(self.device), x['labels']))
             targets, x_boxes, noises, ts = self.prepare_targets(labels)
 
             ts = ts.squeeze(-1)
-            images_whwh = list()
-            for image in images:
-                h, w = image.shape[-2:]
-                images_whwh.append(torch.tensor([w, h, w, h], device=self.device))
-            images_whwh = torch.stack(images_whwh)
             x_boxes = x_boxes * images_whwh[:, None, :]
 
             outputs_class, outputs_coord = self.head(features, x_boxes, ts)
@@ -338,7 +337,7 @@ class DiffusionDet(nn.Module):
 
         return new_targets, torch.stack(diffused_boxes), torch.stack(noises), torch.stack(ts)
 
-    def inference(self, box_cls, box_pred, image_sizes):
+    def inference(self, box_cls, box_pred):
         """
         Arguments:
             box_cls (Tensor): tensor of shape (batch_size, num_proposals, K).
@@ -351,7 +350,6 @@ class DiffusionDet(nn.Module):
         Returns:
             results (List[Instances]): a list of #images elements.
         """
-        assert len(box_cls) == len(image_sizes)
         results = []
 
         if self.use_focal or self.use_fed_loss:
@@ -359,8 +357,8 @@ class DiffusionDet(nn.Module):
             labels = torch.arange(self.num_classes, device=self.device). \
                 unsqueeze(0).repeat(self.num_proposals, 1).flatten(0, 1)
 
-            for i, (scores_per_image, box_pred_per_image, image_size) in enumerate(zip(
-                    scores, box_pred, image_sizes
+            for i, (scores_per_image, box_pred_per_image) in enumerate(zip(
+                    scores, box_pred
             )):
                 scores_per_image, topk_indices = scores_per_image.flatten(0, 1).topk(self.num_proposals, sorted=False)
                 labels_per_image = labels[topk_indices]
@@ -383,8 +381,8 @@ class DiffusionDet(nn.Module):
             # For each box we assign the best class or the second best if the best on is `no_object`.
             scores, labels = F.softmax(box_cls, dim=-1)[:, :, :-1].max(-1)
 
-            for i, (scores_per_image, labels_per_image, box_pred_per_image, image_size) in enumerate(zip(
-                    scores, labels, box_pred, image_sizes
+            for i, (scores_per_image, labels_per_image, box_pred_per_image) in enumerate(zip(
+                    scores, labels, box_pred
             )):
                 if self.sampling_timesteps > 1:
                     return box_pred_per_image, scores_per_image, labels_per_image
