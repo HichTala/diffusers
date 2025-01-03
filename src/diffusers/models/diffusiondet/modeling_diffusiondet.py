@@ -11,6 +11,7 @@ from transformers.utils.backbone_utils import load_backbone
 
 from .head import HeadDynamicK
 from .loss import CriterionDynamicK
+from ... import ModelMixin, ConfigMixin
 
 ModelPrediction = namedtuple('ModelPrediction', ['pred_noise', 'pred_x_start'])
 
@@ -41,19 +42,13 @@ def cosine_beta_schedule(timesteps, s=0.008):
     return torch.clip(betas, 0, 0.999)
 
 
-def detector_postprocess(results_per_image, height, width):
-    return
-
-
-class DiffusionDet(nn.Module):
+class DiffusionDet(ModelMixin, ConfigMixin):
     """
     Implement DiffusionDet
     """
 
     def __init__(self, config):
         super(DiffusionDet, self).__init__()
-
-        self.device = torch.device('cuda')
 
         self.in_features = config.roi_head_in_features
         self.num_classes = config.num_labels

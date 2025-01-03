@@ -2,12 +2,16 @@ from transformers.models.auto import CONFIG_MAPPING
 from transformers.utils.backbone_utils import verify_backbone_config_arguments
 
 from ...configuration_utils import ConfigMixin
-from ...utils import logging
+from ...utils import logging, PushToHubMixin
 
 logger = logging.get_logger(__name__)
 
+CONFIG_NAME = "config.json"
 
-class DiffusionDetConfig(ConfigMixin):
+class DiffusionDetConfig(ConfigMixin, PushToHubMixin):
+
+    config_name = CONFIG_NAME
+
     def __init__(
             self,
             use_timm_backbone=True,
