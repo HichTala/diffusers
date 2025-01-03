@@ -55,7 +55,7 @@ class SinusoidalPositionEmbeddings(nn.Module):
 class HeadDynamicK(nn.Module):
     def __init__(self, config, roi_input_shape):
         super().__init__()
-        num_classes = 80
+        num_classes = config.num_labels
 
         ddet_head = DiffusionDetHead(config, roi_input_shape, num_classes)
         self.num_head = config.num_heads
