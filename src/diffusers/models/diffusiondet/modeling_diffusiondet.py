@@ -5,12 +5,10 @@ from collections import namedtuple, OrderedDict
 import torch
 from torch import nn
 import torch.nn.functional as F
-from torch.nn.functional import l1_loss
 from torchvision import ops
-from torchvision.ops.feature_pyramid_network import LastLevelMaxPool, FeaturePyramidNetwork
+from torchvision.ops.feature_pyramid_network import FeaturePyramidNetwork
 from transformers.utils.backbone_utils import load_backbone
 
-from .fpn import FPN
 from .head import HeadDynamicK
 from .loss import CriterionDynamicK
 
