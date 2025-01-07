@@ -1,7 +1,7 @@
 from transformers.models.auto import CONFIG_MAPPING
 from transformers.utils.backbone_utils import verify_backbone_config_arguments
 
-from ...configuration_utils import ConfigMixin
+from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import logging, PushToHubMixin
 
 logger = logging.get_logger(__name__)
@@ -12,6 +12,7 @@ class DiffusionDetConfig(ConfigMixin, PushToHubMixin):
 
     config_name = CONFIG_NAME
 
+    @register_to_config
     def __init__(
             self,
             use_timm_backbone=True,
@@ -156,5 +157,7 @@ class DiffusionDetConfig(ConfigMixin, PushToHubMixin):
         # Optimizer.
         self.optimizer = optimizer
         self.backbone_multiplier = backbone_multiplier
+
+        self.num_labels = 80
 
         super().__init__()
